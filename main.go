@@ -37,17 +37,21 @@ func main() {
 
 	c := newCollector(db, mysql, *freq)
 
-	c.waitForMySQL()
-
 	if err := c.setup(); err != nil {
 		log.Fatal(err)
 	}
+
 	if newDB {
 		log.Printf("Initialized new DB: %q", *dbpath)
 	} else {
-		log.Printf("Loaded %d records from disk, last updated=%v", len(c.records), c.lastUpdated.Format(time.RFC3339))
+		stats := c.stats()
+		log.Printf("Found %d records in DB %q, last updated=%v",
+			stats.NumRecords,
+			*dbpath,
+			stats.LastUpdated.Format(time.RFC3339))
 	}
 
+	c.waitForMySQL()
 	log.Println("Starting collector")
 	go c.run(*refetch)
 	log.Printf("Starting HTTP server listeing at %v", *httpAddr)

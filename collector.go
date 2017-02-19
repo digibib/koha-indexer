@@ -16,19 +16,16 @@ import (
 // collector represents the process that collects billioitems availabilty and
 // popularity data from Koha. The data is persisted transactionally on disk.
 type collector struct {
-	db          *bolt.DB       // handle to key-value store
-	mysql       *sql.DB        // db handle to Koha's MySQL
-	freq        time.Duration  // polling frequency
-	records     map[int]record // in-memory version of current persisted record state
-	lastUpdated time.Time      // timestamp of last persisted record updates
+	db    *bolt.DB      // handle to key-value store
+	mysql *sql.DB       // db handle to Koha's MySQL
+	freq  time.Duration // polling frequency
 }
 
 func newCollector(db *bolt.DB, mysql *sql.DB, freq time.Duration) collector {
 	return collector{
-		db:      db,
-		mysql:   mysql,
-		freq:    freq,
-		records: make(map[int]record),
+		db:    db,
+		mysql: mysql,
+		freq:  freq,
 	}
 }
 
@@ -37,11 +34,25 @@ var (
 	bktBiblio = []byte("biblio")
 )
 
-// setup ensures DB is set up and loads persisted records into memory.
-func (c collector) setup() error {
+type stats struct {
+	LastUpdated time.Time
+	NumRecords  int
+}
 
-	// Make sure DB is correctly set up
-	if err := c.db.Update(func(tx *bolt.Tx) error {
+func (c collector) stats() (s stats) {
+	c.db.View(func(tx *bolt.Tx) error {
+		if b := tx.Bucket(bktMeta).Get([]byte("updated")); b != nil {
+			s.LastUpdated = time.Unix(int64(btou64(b)), 0)
+		}
+		s.NumRecords = tx.Bucket(bktBiblio).Stats().KeyN
+		return nil
+	})
+	return s
+}
+
+// setup ensures DB is set up with required buckets.
+func (c collector) setup() error {
+	err := c.db.Update(func(tx *bolt.Tx) error {
 		for _, b := range [][]byte{bktMeta, bktBiblio} {
 			_, err := tx.CreateBucketIfNotExists(b)
 			if err != nil {
@@ -49,50 +60,66 @@ func (c collector) setup() error {
 			}
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
-
-	// Load persisted records into memory
-	if err := c.db.View(func(tx *bolt.Tx) error {
-		cur := tx.Bucket(bktBiblio).Cursor()
-		for k, v := cur.First(); k != nil; k, v = cur.Next() {
-			rec, err := decode(v)
-			if err != nil {
-				return err
-			}
-			c.records[int(btou32(k))] = rec
-		}
-
-		// Read timestamp of last update
-		if b := tx.Bucket(bktMeta).Get([]byte("updated")); b != nil {
-			c.lastUpdated = time.Unix(int64(btou64(b)), 0)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
+	return err
 }
 
 // persistUpdated stores updated records on disk
-func (c collector) persistUpdated(records map[int]record, timestamp time.Time) (int, error) {
-	n := 0
-	err := c.db.Update(func(tx *bolt.Tx) error {
-		for _, record := range records {
-			if !timestamp.Equal(record.Updated) {
-				// no changes
-				continue
-			}
-			b, err := encode(record)
+func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.Time) (nNew, nUpdated, nDeleted int, finalErr error) {
+	finalErr = c.db.Update(func(tx *bolt.Tx) error {
+		cur := tx.Bucket(bktBiblio).Cursor()
+
+		updates := make(map[uint32]bool)
+
+		for k, v := cur.First(); k != nil; k, v = cur.Next() {
+			oldRec, err := decode(v)
 			if err != nil {
 				return err
 			}
-			if err := tx.Bucket(bktBiblio).Put(u32tob(uint32(record.Biblionumber)), b); err != nil {
+			if newRec, ok := newRecords[oldRec.Biblionumber]; ok {
+				if newRec.sameAs(oldRec) {
+					// no changes
+					delete(newRecords, newRec.Biblionumber)
+					continue
+				}
+				// Mark record as to be updated. It's not safe to mutate the key/values
+				// while iterating.
+				updates[newRec.Biblionumber] = true
+			} else {
+				// Record is no longer in Koha and must be deleted.
+				if err := cur.Delete(); err != nil {
+					return err
+				}
+				nDeleted++
+			}
+		}
+
+		// Update records
+		for biblionr, _ := range updates {
+			b, err := encode(newRecords[biblionr])
+			if err != nil {
 				return err
 			}
-			n++
+			if err := tx.Bucket(bktBiblio).Put(u32tob(biblionr), b); err != nil {
+				return err
+			}
+			nUpdated++
+		}
+
+		// Insert new records
+		for biblionr, rec := range newRecords {
+			if updates[biblionr] {
+				continue
+			}
+			// Unchanged records are deleted, so remaining must be new records.
+			b, err := encode(rec)
+			if err != nil {
+				return err
+			}
+			if err := tx.Bucket(bktBiblio).Put(u32tob(biblionr), b); err != nil {
+				return err
+			}
+			nNew++
 		}
 
 		// Store timestamp
@@ -101,12 +128,13 @@ func (c collector) persistUpdated(records map[int]record, timestamp time.Time) (
 			u64tob(uint64(timestamp.Unix())),
 		)
 	})
-	return n, err
+	return
 }
 
-func (c collector) fetchItemCounts() (map[int]int, error) {
-	var biblionumber, count int
-	counts := make(map[int]int)
+func (c collector) fetchItemCounts() (map[uint32]int, error) {
+	var biblionumber uint32
+	var count int
+	counts := make(map[uint32]int)
 
 	rows, err := c.mysql.Query(sqlItemsPerBiblio)
 	if err != nil {
@@ -123,10 +151,10 @@ func (c collector) fetchItemCounts() (map[int]int, error) {
 	return counts, nil
 }
 
-func (c collector) fetchAvailability() (map[int]string, error) {
-	var biblionumber int
+func (c collector) fetchAvailability() (map[uint32]string, error) {
+	var biblionumber uint32
 	var branches string
-	avail := make(map[int]string)
+	avail := make(map[uint32]string)
 
 	rows, err := c.mysql.Query(sqlBranchAvailabilty)
 	if err != nil {
@@ -143,16 +171,17 @@ func (c collector) fetchAvailability() (map[int]string, error) {
 	return avail, nil
 }
 
-func (c collector) fetchCheckouts1m() (map[int]int, error) {
+func (c collector) fetchCheckouts1m() (map[uint32]int, error) {
 	return c.fetchCheckoutsNMonth(sqlCheckouts1m)
 }
-func (c collector) fetchCheckouts6m() (map[int]int, error) {
+func (c collector) fetchCheckouts6m() (map[uint32]int, error) {
 	return c.fetchCheckoutsNMonth(sqlCheckouts6m)
 }
 
-func (c collector) fetchCheckoutsNMonth(q string) (map[int]int, error) {
-	var biblionumber, count int
-	checkouts := make(map[int]int)
+func (c collector) fetchCheckoutsNMonth(q string) (map[uint32]int, error) {
+	var biblionumber uint32
+	var count int
+	checkouts := make(map[uint32]int)
 
 	rows, err := c.mysql.Query(q)
 	if err != nil {
@@ -198,7 +227,7 @@ func (c collector) run(refetch bool) error {
 
 		log.Println("Fetching data from Koha...")
 
-		// This will timestamp be stored on the updated records
+		// This timestamp be stored on the updated records
 		timestamp := time.Now()
 
 		counts, err := c.fetchItemCounts()
@@ -228,7 +257,7 @@ func (c collector) run(refetch bool) error {
 		log.Println("Fetched data OK")
 		log.Println("Processing data...")
 
-		newRecords := make(map[int]record, len(counts))
+		newRecords := make(map[uint32]record, len(counts))
 
 		for biblio, n := range counts {
 			newRecords[biblio] = record{
@@ -256,57 +285,19 @@ func (c collector) run(refetch bool) error {
 			newRecords[biblio] = rec
 		}
 
-		if refetch {
-			c.records = make(map[int]record)
-			refetch = false
-		}
-
-		var (
-			totalCount   = len(newRecords)
-			deletedCount = len(c.records) - totalCount
-			updatedCount = 0
-			sameCount    = 0
-			newCount     = 0
-		)
-		if deletedCount < 0 {
-			// We are refetching all, or fetching for the first time.
-			deletedCount = 0
-		}
-
-		// Loop over records, and find which is updated
-		for biblio, newRecord := range newRecords {
-			if oldRecord, found := c.records[biblio]; found {
-				if newRecord.sameAs(oldRecord) {
-					// record is same, keep old timestamp
-					newRecord.Updated = oldRecord.Updated
-					sameCount++
-				} else {
-					// record is updated
-					newRecord.Updated = timestamp
-					updatedCount++
-				}
-			} else {
-				// record is new
-				newRecord.Updated = timestamp
-				newCount++
-			}
-			newRecords[biblio] = newRecord
-		}
+		totalCount := len(newRecords)
 
 		// Persist all updated records to disk
 		log.Println("Persisting to disk...")
-		n, err := c.persistUpdated(newRecords, timestamp)
+		nNew, nUpdated, nDeleted, err := c.persistUpdated(newRecords, timestamp)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("Persisted %d records to disk, with timestamp=%v", n, timestamp.Format(time.RFC3339))
 
-		// We can now swap the old records with the updated records
-		c.records = newRecords
-		c.lastUpdated = timestamp
-
+		log.Printf("Persisted all changes to disk, with timestamp=%v", timestamp.Format(time.RFC3339))
+		log.Printf("Stats: updated=%d new=%d deleted=%d unchanged=%d", nUpdated, nNew, nDeleted, totalCount-(nUpdated+nNew))
 		log.Printf("Done processing %d records", totalCount)
-		log.Printf("Stats: same=%d updated=%d new=%d deleted=%d", sameCount, updatedCount, newCount, deletedCount)
+
 		firstLoop = false
 	}
 
@@ -316,7 +307,7 @@ func (c collector) run(refetch bool) error {
 // record represent a biblioitem in Koha, with values
 // aggregated from its items and transactions on those items.
 type record struct {
-	Biblionumber int
+	Biblionumber uint32
 	Updated      time.Time // timestamp of when any of its data was changed
 	ItemsTotal   int       // number of items on biblioitem
 	Checkouts1m  int       // number of checkouts during the last month

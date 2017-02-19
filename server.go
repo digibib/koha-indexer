@@ -2,7 +2,6 @@ package main
 
 import (
 	"compress/gzip"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -37,26 +36,17 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var rec record
-	err = s.db.View(func(tx *bolt.Tx) error {
+	var recJson []byte
+	if err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bktBiblio).Get(u32tob(uint32(biblionr)))
 		if b == nil {
 			return errNotFound
 		}
-		var err2 error
-		rec, err2 = decode(b)
-		if err2 != nil {
-			return err2
-		}
+		recJson = make([]byte, len(b))
+		copy(recJson, b)
 		return nil
-	})
-
-	if err == errNotFound {
+	}); err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -65,7 +55,7 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	gz := gzip.NewWriter(w)
 	defer gz.Close()
-	if err := json.NewEncoder(gz).Encode(rec); err != nil {
+	if _, err := gz.Write(recJson); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
