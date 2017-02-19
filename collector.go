@@ -76,7 +76,7 @@ func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.T
 			if err != nil {
 				return err
 			}
-			if newRec, ok := newRecords[oldRec.Biblionumber]; ok {
+			if newRec, found := newRecords[oldRec.Biblionumber]; found {
 				if newRec.sameAs(oldRec) {
 					// no changes
 					delete(newRecords, newRec.Biblionumber)
@@ -348,9 +348,9 @@ func (r record) sameAs(stored record) bool {
 // SQL queries
 const (
 	sqlItemsPerBiblio = `
-  SELECT biblionumber, count(*) AS num
+  SELECT biblioitemnumber, count(*) AS num
     FROM items
-GROUP BY biblionumber;`
+GROUP BY biblioitemnumber;`
 
 	sqlBranchAvailabilty = `
    SELECT I.biblioitemnumber, GROUP_CONCAT(DISTINCT I.homebranch)
@@ -364,34 +364,34 @@ LEFT JOIN reserves R USING(itemnumber)
  GROUP BY biblioitemnumber;`
 
 	sqlCheckouts1m = `
-  SELECT biblionumber, count(*) AS num
+  SELECT biblioitemnumber, count(*) AS num
     FROM (
-         (SELECT issue_id, items.biblionumber AS biblionumber
+         (SELECT issue_id, items.biblioitemnumber AS biblioitemnumber
             FROM issues
             JOIN items USING(itemnumber)
            WHERE issues.issuedate > (NOW() - INTERVAL 1 MONTH) )
          UNION
-         (SELECT issue_id, items.biblionumber AS biblionumber
+         (SELECT issue_id, items.biblioitemnumber AS biblioitemnumber
             FROM old_issues
             JOIN items USING(itemnumber)
            WHERE old_issues.issuedate > (NOW() - INTERVAL 1 MONTH) )
           ) AS combined
-GROUP BY biblionumber;`
+GROUP BY biblioitemnumber;`
 
 	sqlCheckouts6m = `
-  SELECT biblionumber, count(*) AS num
+  SELECT biblioitemnumber, count(*) AS num
     FROM (
-         (SELECT issue_id, items.biblionumber AS biblionumber
+         (SELECT issue_id, items.biblioitemnumber AS biblioitemnumber
             FROM issues
             JOIN items USING(itemnumber)
            WHERE issues.issuedate > (NOW() - INTERVAL 6 MONTH) )
          UNION
-         (SELECT issue_id, items.biblionumber AS biblionumber
+         (SELECT issue_id, items.biblioitemnumber AS biblioitemnumber
             FROM old_issues
             JOIN items USING(itemnumber)
            WHERE old_issues.issuedate > (NOW() - INTERVAL 6 MONTH) )
          ) AS combined
-GROUP BY biblionumber;`
+GROUP BY biblioitemnumber;`
 )
 
 // u32tob converts a uint32 into a 4-byte slice.
