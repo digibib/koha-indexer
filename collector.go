@@ -171,6 +171,26 @@ func (c collector) fetchAvailability() (map[uint32]string, error) {
 	return avail, nil
 }
 
+func (c collector) fetchBranches() (map[uint32]string, error) {
+	var biblionumber uint32
+	var branches string
+	avail := make(map[uint32]string)
+
+	rows, err := c.mysql.Query(sqlHomeBranches)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		if err := rows.Scan(&biblionumber, &branches); err != nil {
+			return nil, err
+		}
+		avail[biblionumber] = branches
+
+	}
+	rows.Close()
+	return avail, nil
+}
+
 func (c collector) fetchCheckouts1m() (map[uint32]int, error) {
 	return c.fetchCheckoutsNMonth(sqlCheckouts1m)
 }
@@ -236,6 +256,12 @@ func (c collector) run(refetch bool) error {
 			continue
 		}
 
+		branches, err := c.fetchBranches()
+		if err != nil {
+			log.Printf("Failed to fetch branches data: %v", err)
+			continue
+		}
+
 		avail, err := c.fetchAvailability()
 		if err != nil {
 			log.Printf("Failed to fetch availlability data: %v", err)
@@ -270,6 +296,13 @@ func (c collector) run(refetch bool) error {
 			rec := newRecords[biblio]
 			rec.Availability = strings.Split(branches, ",")
 			sort.Strings(rec.Availability)
+			newRecords[biblio] = rec
+		}
+
+		for biblio, branches := range branches {
+			rec := newRecords[biblio]
+			rec.Branches = strings.Split(branches, ",")
+			sort.Strings(rec.Branches)
 			newRecords[biblio] = rec
 		}
 
@@ -312,6 +345,7 @@ type record struct {
 	ItemsTotal   int       // number of items on biblioitem
 	Checkouts1m  int       // number of checkouts during the last month
 	Checkouts6m  int       // number of checkouts during the last 6 months
+	Branches     []string  // sorted list of branchdoes (homebranch) with items
 	Availability []string  // sorted list of branchcodes (homebranch) where items are available
 }
 
@@ -342,6 +376,12 @@ func (r record) sameAs(stored record) bool {
 			return false
 		}
 	}
+	for i, branch := range r.Branches {
+		if stored.Branches[i] != branch {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -349,6 +389,11 @@ func (r record) sameAs(stored record) bool {
 const (
 	sqlItemsPerBiblio = `
   SELECT biblionumber, count(*) AS num
+    FROM items
+GROUP BY biblionumber;`
+
+	sqlHomeBranches = `
+  SELECT biblionumber, GROUP_CONCAT(DISTINCT homebranch)
     FROM items
 GROUP BY biblionumber;`
 
