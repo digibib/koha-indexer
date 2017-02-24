@@ -96,7 +96,9 @@ func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.T
 
 		// Update records
 		for biblionr, _ := range updates {
-			b, err := encode(newRecords[biblionr])
+			rec := newRecords[biblionr]
+			rec.Updated = timestamp
+			b, err := encode(rec)
 			if err != nil {
 				return err
 			}
@@ -111,6 +113,7 @@ func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.T
 			if updates[biblionr] {
 				continue
 			}
+			rec.Updated = timestamp
 			// Unchanged records are deleted, so remaining must be new records.
 			b, err := encode(rec)
 			if err != nil {
