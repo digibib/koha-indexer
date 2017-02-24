@@ -10,8 +10,6 @@ Usage of koha-indexer:
         Path to db file, will be created if not existing (default "koharecords.db")
   -dsn string
         DSN for connecting to MySQL (username:password@hostname/dbname)
-  -force-refetch
-        Discard persisted state and refetch data
   -freq duration
         Query frequency (default 15m0s)
   -http string

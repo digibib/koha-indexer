@@ -235,7 +235,7 @@ func (c collector) waitForMySQL() {
 	log.Println("MySQL connection OK")
 }
 
-func (c collector) run(refetch bool) error {
+func (c collector) run() error {
 
 	firstLoop := true
 	for {

@@ -15,7 +15,6 @@ func main() {
 	dsn := flag.String("dsn", "", "DSN for connecting to MySQL (username:password@hostname/dbname)")
 	freq := flag.Duration("freq", 15*time.Minute, "Query frequency")
 	dbpath := flag.String("db", "koharecords.db", "Path to db file, will be created if not existing")
-	refetch := flag.Bool("force-refetch", false, "Discard persisted state and refetch data")
 	httpAddr := flag.String("http", ":8009", "HTTP serve address")
 	flag.Parse()
 
@@ -53,7 +52,7 @@ func main() {
 
 	c.waitForMySQL()
 	log.Println("Starting collector")
-	go c.run(*refetch)
+	go c.run()
 	log.Printf("Starting HTTP server listeing at %v", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, newServer(db)))
 }
