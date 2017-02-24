@@ -13,7 +13,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// collector represents the process that collects billioitems availabilty and
+// collector represents the process that collects billioitems availability and
 // popularity data from Koha. The data is persisted transactionally on disk.
 type collector struct {
 	db    *bolt.DB      // handle to key-value store
@@ -345,7 +345,7 @@ type record struct {
 	ItemsTotal   int       // number of items on biblioitem
 	Checkouts1m  int       // number of checkouts during the last month
 	Checkouts6m  int       // number of checkouts during the last 6 months
-	Branches     []string  // sorted list of branchdoes (homebranch) with items
+	Branches     []string  // sorted list of branchcodes (homebranch) with items
 	Availability []string  // sorted list of branchcodes (homebranch) where items are available
 }
 
@@ -370,7 +370,7 @@ func (r record) sameAs(stored record) bool {
 	if len(r.Availability) != len(stored.Availability) {
 		return false
 	}
-	// Availabilty branchcodes are assumed to be sorted alphabetically
+	// Availability branchcodes are assumed to be sorted alphabetically
 	for i, branch := range r.Availability {
 		if stored.Availability[i] != branch {
 			return false
