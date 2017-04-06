@@ -16,6 +16,11 @@ func main() {
 	freq := flag.Duration("freq", 15*time.Minute, "Query frequency")
 	dbpath := flag.String("db", "koharecords.db", "Path to db file, will be created if not existing")
 	httpAddr := flag.String("http", ":8009", "HTTP serve address")
+	initalImport := flag.Bool("initial-import", false, "Perform inital import of all availability data via SPARQL")
+	fusekiEndpoint := flag.String("sparql", "http://fuseki:3030/ds/sparql", "Fuseki SPARQL endpoint")
+	sendUpdates := flag.Bool("update", false, "Send changes in availability to services")
+	servicesEndpoint := flag.String("services", "http://services:8005/publication/", "Services availablity endpoint")
+
 	flag.Parse()
 
 	mysql, err := sql.Open("mysql", *dsn)
@@ -35,6 +40,10 @@ func main() {
 	defer db.Close()
 
 	c := newCollector(db, mysql, *freq)
+	c.services = *servicesEndpoint
+	c.fuseki = *fusekiEndpoint
+	c.sendUpdates = *sendUpdates
+	c.initialImport = *initalImport
 
 	if err := c.setup(); err != nil {
 		log.Fatal(err)

@@ -4,8 +4,12 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,9 +20,13 @@ import (
 // collector represents the process that collects billioitems availability and
 // popularity data from Koha. The data is persisted transactionally on disk.
 type collector struct {
-	db    *bolt.DB      // handle to key-value store
-	mysql *sql.DB       // db handle to Koha's MySQL
-	freq  time.Duration // polling frequency
+	db            *bolt.DB      // handle to key-value store
+	mysql         *sql.DB       // db handle to Koha's MySQL
+	freq          time.Duration // polling frequency
+	fuseki        string        // fuseki SPARQL endpoint
+	services      string        // services update availablity endpoint
+	initialImport bool          // when true perform initial import of all data (after first collecting done)
+	sendUpdates   bool          // when true send updates of changes to services endpoint
 }
 
 func newCollector(db *bolt.DB, mysql *sql.DB, freq time.Duration) collector {
@@ -335,6 +343,49 @@ func (c collector) run() error {
 		log.Printf("Done processing %d records", totalCount)
 
 		firstLoop = false
+
+		if c.initialImport && c.fuseki != "" {
+			log.Println("Importing all availablity data via SPARQL, using batchsize 1000")
+
+			if err := c.db.View(func(tx *bolt.Tx) error {
+				queries := make([]string, tx.Bucket(bktBiblio).Stats().KeyN+1)
+
+				cur := tx.Bucket(bktBiblio).Cursor()
+				n := 0
+				for k, v := cur.First(); k != nil; k, v = cur.Next() {
+					rec, err := decode(v)
+					if err != nil {
+						return err
+					}
+					n++
+					queries[n] = genUpdateQuery(rec)
+				}
+
+				for i := 0; i < len(queries); i += 1000 {
+					to := i + 1000
+					if to > len(queries) {
+						to = len(queries)
+					}
+					resp, err := http.PostForm(c.fuseki,
+						url.Values{"update": {strings.Join(queries[i:to], "")}})
+					if err != nil {
+						return fmt.Errorf("SPARQL query failed: %v", err)
+					}
+					if resp.StatusCode != 200 {
+						return fmt.Errorf("SPARQL query failed: %v", resp.Status)
+					}
+					resp.Body.Close()
+
+					log.Printf("SPARQL update batch %d completed", (i/1000)+1)
+				}
+				return nil
+			}); err != nil {
+				log.Printf("Aborting import: %v", err)
+			}
+
+			// We only want to do this once
+			c.initialImport = false
+		}
 	}
 
 	return nil
@@ -391,8 +442,26 @@ func (r record) sameAs(stored record) bool {
 	return true
 }
 
-// SQL queries
+func genUpdateQuery(r record) string {
+	return fmt.Sprintf(
+		sparqlUpdateAvailabilty,
+		strings.Join(r.Branches, ","),
+		strings.Join(r.Availability, ","),
+		strconv.Itoa(int(r.Biblionumber)),
+	)
+}
+
+// SQL/SPARQL queries
 const (
+	sparqlUpdateAvailabilty = `
+	PREFIX : <http://data.deichman.no/ontology#>
+	DELETE { ?pub :hasHomeBranch ?homeBranch ; :hasAvailableBranch ?availBranch }
+	INSERT { ?pub :hasHomeBranch "%s" ; :hasAvailableBranch "%s" }
+	WHERE  { ?pub :recordId "%s" .
+	         OPTIONAL { ?pub :hasHomeBranch ?homeBranch }
+	         OPTIONAL { ?pub :hasAvailableBranch ?availBranch }
+	};`
+
 	sqlItemsPerBiblio = `
   SELECT biblionumber, count(*) AS num
     FROM items
