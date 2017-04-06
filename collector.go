@@ -379,6 +379,9 @@ func (r record) sameAs(stored record) bool {
 			return false
 		}
 	}
+	if len(r.Branches) != len(stored.Branches) {
+		return false
+	}
 	for i, branch := range r.Branches {
 		if stored.Branches[i] != branch {
 			return false
