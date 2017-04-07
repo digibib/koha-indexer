@@ -453,10 +453,18 @@ func genUpdateQuery(r record) string {
 	var inserts []string
 	inserts = append(inserts, fmt.Sprintf("?pub :hasNumItems %v", r.ItemsTotal))
 	if len(r.Branches) > 0 {
-		inserts = append(inserts, fmt.Sprintf("?pub :hasHomeBranch %q", strings.Join(r.Branches, ",")))
+		branches := make([]string, len(r.Branches))
+		for i, b := range r.Branches {
+			branches[i] = strconv.Quote(b)
+		}
+		inserts = append(inserts, fmt.Sprintf("?pub :hasHomeBranch %s", strings.Join(branches, ",")))
 	}
 	if len(r.Availability) > 0 {
-		inserts = append(inserts, fmt.Sprintf("?pub :hasAvailableBranch %q", strings.Join(r.Availability, ",")))
+		branches := make([]string, len(r.Branches))
+		for i, b := range r.Branches {
+			branches[i] = strconv.Quote(b)
+		}
+		inserts = append(inserts, fmt.Sprintf("?pub :hasAvailableBranch %s", strings.Join(branches, ",")))
 	}
 	return fmt.Sprintf(
 		sparqlUpdateAvailability,
