@@ -345,49 +345,56 @@ func (c collector) run() error {
 		firstLoop = false
 
 		if c.initialImport && c.fuseki != "" {
-			log.Println("Importing all availablity data via SPARQL, using batchsize 1000")
-
-			if err := c.db.View(func(tx *bolt.Tx) error {
-				queries := make([]string, tx.Bucket(bktBiblio).Stats().KeyN+1)
-
-				cur := tx.Bucket(bktBiblio).Cursor()
-				n := 0
-				for k, v := cur.First(); k != nil; k, v = cur.Next() {
-					rec, err := decode(v)
-					if err != nil {
-						return err
-					}
-					n++
-					queries[n] = genUpdateQuery(rec)
-				}
-
-				for i := 0; i < len(queries); i += 1000 {
-					to := i + 1000
-					if to > len(queries) {
-						to = len(queries)
-					}
-					resp, err := http.PostForm(c.fuseki,
-						url.Values{"update": {strings.Join(queries[i:to], "")}})
-					if err != nil {
-						return fmt.Errorf("SPARQL query failed: %v", err)
-					}
-					if resp.StatusCode != 200 {
-						return fmt.Errorf("SPARQL query failed: %v", resp.Status)
-					}
-					resp.Body.Close()
-
-					log.Printf("SPARQL update batch %d completed", (i/1000)+1)
-				}
-				return nil
-			}); err != nil {
+			if err := c.importAll(); err != nil {
 				log.Printf("Aborting import: %v", err)
 			}
-			log.Println("Completed initial import of availability data")
 			// We only want to do this once
 			c.initialImport = false
 		}
 	}
 
+	return nil
+}
+
+func (c collector) importAll() error {
+	log.Println("Importing all availablity data via SPARQL, using batchsize 1000")
+
+	if err := c.db.View(func(tx *bolt.Tx) error {
+		queries := make([]string, tx.Bucket(bktBiblio).Stats().KeyN+1)
+
+		cur := tx.Bucket(bktBiblio).Cursor()
+		n := 0
+		for k, v := cur.First(); k != nil; k, v = cur.Next() {
+			rec, err := decode(v)
+			if err != nil {
+				return err
+			}
+			n++
+			queries[n] = genUpdateQuery(rec)
+		}
+
+		for i := 0; i < len(queries); i += 1000 {
+			to := i + 1000
+			if to > len(queries) {
+				to = len(queries)
+			}
+			resp, err := http.PostForm(c.fuseki,
+				url.Values{"update": {strings.Join(queries[i:to], "")}})
+			if err != nil {
+				return fmt.Errorf("SPARQL query failed: %v", err)
+			}
+			if resp.StatusCode != 200 {
+				return fmt.Errorf("SPARQL query failed: %v", resp.Status)
+			}
+			resp.Body.Close()
+
+			log.Printf("SPARQL update batch %d completed", (i/1000)+1)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	log.Println("Completed initial import of availability data")
 	return nil
 }
 
