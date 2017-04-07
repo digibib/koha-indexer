@@ -382,7 +382,7 @@ func (c collector) run() error {
 			}); err != nil {
 				log.Printf("Aborting import: %v", err)
 			}
-
+			log.Println("Completed initial import of availability data")
 			// We only want to do this once
 			c.initialImport = false
 		}
@@ -443,21 +443,29 @@ func (r record) sameAs(stored record) bool {
 }
 
 func genUpdateQuery(r record) string {
+	var inserts []string
+	inserts = append(inserts, fmt.Sprintf("?pub :hasNumItems %v", r.ItemsTotal))
+	if len(r.Branches) > 0 {
+		inserts = append(inserts, fmt.Sprintf("?pub :hasHomeBranch %q", strings.Join(r.Branches, ",")))
+	}
+	if len(r.Availability) > 0 {
+		inserts = append(inserts, fmt.Sprintf("?pub :hasAvailableBranch %q", strings.Join(r.Availability, ",")))
+	}
 	return fmt.Sprintf(
-		sparqlUpdateAvailabilty,
-		strings.Join(r.Branches, ","),
-		strings.Join(r.Availability, ","),
+		sparqlUpdateAvailability,
+		strings.Join(inserts, ".\n"),
 		strconv.Itoa(int(r.Biblionumber)),
 	)
 }
 
 // SQL/SPARQL queries
 const (
-	sparqlUpdateAvailabilty = `
+	sparqlUpdateAvailability = `
 	PREFIX : <http://data.deichman.no/ontology#>
-	DELETE { ?pub :hasHomeBranch ?homeBranch ; :hasAvailableBranch ?availBranch }
-	INSERT { ?pub :hasHomeBranch "%s" ; :hasAvailableBranch "%s" }
+	DELETE { ?pub :hasHomeBranch ?homeBranch ; :hasAvailableBranch ?availBranch ; :hasNumItems ?numItems }
+	INSERT { %s }
 	WHERE  { ?pub :recordId "%s" .
+	         OPTIONAL { ?pub :hasNumItems ?numItems }
 	         OPTIONAL { ?pub :hasHomeBranch ?homeBranch }
 	         OPTIONAL { ?pub :hasAvailableBranch ?availBranch }
 	};`
