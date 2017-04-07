@@ -340,6 +340,30 @@ func (c collector) run() error {
 
 		log.Printf("Persisted all changes to disk, with timestamp=%v", timestamp.Format(time.RFC3339))
 		log.Printf("Stats: updated=%d new=%d deleted=%d unchanged=%d", nUpdated, nNew, nDeleted, totalCount-(nUpdated+nNew))
+
+		if len(newRecords) > 0 && c.sendUpdates && c.services != "" {
+			log.Println("Sending updated records to services")
+			for _, r := range newRecords {
+				resp, err := http.PostForm(c.services,
+					url.Values{
+						"recordId":          {strconv.Itoa(int(r.Biblionumber))},
+						"homeBranches":      {strings.Join(r.Branches, ",")},
+						"availableBranches": {strings.Join(r.Availability, ",")},
+						"numItems":          {strconv.Itoa(r.ItemsTotal)},
+					})
+				if err != nil {
+					log.Printf("HTTP request to services failed: %v", err)
+					break
+				}
+				if resp.StatusCode != 202 {
+					log.Printf("HTTP request to services failed: %v", resp.Status)
+					break
+				}
+				resp.Body.Close()
+
+			}
+			// TODO handle deleted biblios
+		}
 		log.Printf("Done processing %d records", totalCount)
 
 		firstLoop = false
