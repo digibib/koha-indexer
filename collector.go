@@ -381,7 +381,8 @@ func (c collector) run() error {
 }
 
 func (c collector) importAll() error {
-	log.Println("Importing all availablity data via SPARQL, using batchsize 1000")
+	const batchSize = 1000
+	log.Printf("Importing all availablity data via SPARQL, using batchsize %d", batchSize)
 
 	if err := c.db.View(func(tx *bolt.Tx) error {
 		queries := make([]string, tx.Bucket(bktBiblio).Stats().KeyN+1)
@@ -397,8 +398,8 @@ func (c collector) importAll() error {
 			queries[n] = genUpdateQuery(rec)
 		}
 
-		for i := 0; i < len(queries); i += 1000 {
-			to := i + 1000
+		for i := 0; i < len(queries); i += batchSize {
+			to := i + batchSize
 			if to > len(queries) {
 				to = len(queries)
 			}
@@ -412,7 +413,7 @@ func (c collector) importAll() error {
 			}
 			resp.Body.Close()
 
-			log.Printf("SPARQL update batch %d completed", (i/1000)+1)
+			log.Printf("SPARQL update batch %d completed", (i/batchSize)+1)
 		}
 		return nil
 	}); err != nil {
