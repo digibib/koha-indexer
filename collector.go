@@ -356,8 +356,8 @@ func (c collector) run() error {
 					break
 				}
 				if resp.StatusCode != 202 {
-					log.Printf("HTTP request to services failed: %v", resp.Status)
-					break
+					log.Printf("Request to services reindexing publication with recordId %d failed: %v", r.Biblionumber, resp.Status)
+					continue
 				}
 				resp.Body.Close()
 
