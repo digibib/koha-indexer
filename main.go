@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,7 +13,6 @@ import (
 )
 
 func main() {
-	dsn := flag.String("dsn", "", "DSN for connecting to MySQL (username:password@hostname/dbname)")
 	freq := flag.Duration("freq", 15*time.Minute, "Query frequency")
 	dbpath := flag.String("db", "koharecords.db", "Path to db file, will be created if not existing")
 	httpAddr := flag.String("http", ":8009", "HTTP serve address")
@@ -23,7 +23,12 @@ func main() {
 
 	flag.Parse()
 
-	mysql, err := sql.Open("mysql", *dsn)
+	dsn := fmt.Sprintf("%s:%s@tcp(koha_mysql:3306)/koha_%s",
+		os.Getenv("KOHA_ADMINUSER"),
+		os.Getenv("KOHA_ADMINPASS"),
+		os.Getenv("KOHA_INSTANCE"))
+
+	mysql, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
