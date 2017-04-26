@@ -485,8 +485,8 @@ func genUpdateQuery(r record) string {
 		inserts = append(inserts, fmt.Sprintf("?pub :hasHomeBranch %s", strings.Join(branches, ",")))
 	}
 	if len(r.Availability) > 0 {
-		branches := make([]string, len(r.Branches))
-		for i, b := range r.Branches {
+		branches := make([]string, len(r.Availability))
+		for i, b := range r.Availability {
 			branches[i] = strconv.Quote(b)
 		}
 		inserts = append(inserts, fmt.Sprintf("?pub :hasAvailableBranch %s", strings.Join(branches, ",")))
