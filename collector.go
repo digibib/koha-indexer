@@ -524,11 +524,13 @@ GROUP BY biblionumber;`
    SELECT I.biblionumber, GROUP_CONCAT(DISTINCT I.homebranch)
      FROM items I
 LEFT JOIN reserves R USING(itemnumber)
+LEFT JOIN branchtransfers BT USING(itemnumber)
     WHERE I.onloan IS NULL
       AND I.homebranch = I.holdingbranch
       AND I.notforloan = 0
       AND I.itemlost = 0
       AND R.reserve_id IS NULL
+      AND (BT.itemnumber IS NULL OR BT.datearrived IS NOT NULL)
  GROUP BY biblionumber;`
 
 	sqlCheckouts1m = `
