@@ -398,7 +398,7 @@ func (c collector) run() error {
 
 func (c collector) importAll() error {
 	const batchSize = 1000
-	log.Printf("Clearing all stored availability data via SPARQL")
+	log.Println("Clearing all stored availability data via SPARQL")
 	resp, err := http.PostForm(c.fuseki,
 		url.Values{"update": {sparqlDeleteAllAvialData}})
 	if err != nil {
@@ -408,6 +408,7 @@ func (c collector) importAll() error {
 		return fmt.Errorf("SPARQL query failed: %v", resp.Status)
 	}
 	resp.Body.Close()
+	log.Println("Done cleared previous state")
 
 	log.Printf("Importing all availablity data via SPARQL, using batchsize %d", batchSize)
 
@@ -538,10 +539,9 @@ const (
 	};`
 
 	sparqlDeleteAllAvialData = `
-	PREFIX : <http://data.deichman.no/ontology#>
-	DELETE WHERE { ?p :hasNumItems ?n }
-	DELETE WHERE { ?p :hasHomeBranch ?b }
-	DELETE WHERE { ?p :hasAvailableBranch ?b }
+	DELETE WHERE { ?p <http://data.deichman.no/ontology#hasNumItems> ?n };
+	DELETE WHERE { ?p <http://data.deichman.no/ontology#hasHomeBranch> ?b };
+	DELETE WHERE { ?p <http://data.deichman.no/ontology#hasAvailableBranch> ?b };
 	`
 
 	sqlItemsPerBiblio = `
