@@ -73,7 +73,7 @@ func (c collector) setup() error {
 }
 
 // persistUpdated stores updated records on disk
-func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.Time) (nNew, nUpdated, nDeleted int, finalErr error) {
+func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.Time) (nNew, nUpdated int, deleted []uint32, finalErr error) {
 	finalErr = c.db.Update(func(tx *bolt.Tx) error {
 		cur := tx.Bucket(bktBiblio).Cursor()
 
@@ -98,7 +98,7 @@ func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.T
 				if err := cur.Delete(); err != nil {
 					return err
 				}
-				nDeleted++
+				deleted = append(deleted, oldRec.Biblionumber)
 			}
 		}
 
@@ -333,13 +333,13 @@ func (c collector) run() error {
 
 		// Persist all updated records to disk
 		log.Println("Persisting to disk...")
-		nNew, nUpdated, nDeleted, err := c.persistUpdated(newRecords, timestamp)
+		nNew, nUpdated, deletedIDs, err := c.persistUpdated(newRecords, timestamp)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		log.Printf("Persisted all changes to disk, with timestamp=%v", timestamp.Format(time.RFC3339))
-		log.Printf("Stats: updated=%d new=%d deleted=%d unchanged=%d", nUpdated, nNew, nDeleted, totalCount-(nUpdated+nNew))
+		log.Printf("Stats: updated=%d new=%d deleted=%d unchanged=%d", nUpdated, nNew, len(deletedIDs), totalCount-(nUpdated+nNew))
 
 		if !c.initialImport && len(newRecords) > 0 && c.sendUpdates && c.services != "" {
 			log.Println("Sending updated records to services")
@@ -362,7 +362,23 @@ func (c collector) run() error {
 				resp.Body.Close()
 
 			}
-			// TODO handle deleted biblios
+		}
+		for _, id := range deletedIDs {
+			// Remove any reference to biblio
+			resp, err := http.PostForm(c.services,
+				url.Values{
+					"recordId": {strconv.Itoa(int(id))},
+					"deleted":  {"true"},
+				})
+			if err != nil {
+				log.Printf("HTTP request to services failed: %v", err)
+				continue
+			}
+			if resp.StatusCode != 202 {
+				log.Printf("Request to services reindexing publication with recordId %d failed: %v", id, resp.Status)
+				continue
+			}
+			resp.Body.Close()
 		}
 		log.Printf("Done processing %d records", totalCount)
 
