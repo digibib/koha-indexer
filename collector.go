@@ -355,11 +355,11 @@ func (c collector) run() error {
 					log.Printf("HTTP request to services failed: %v", err)
 					break
 				}
+				resp.Body.Close()
 				if resp.StatusCode != 202 {
 					log.Printf("Request to services reindexing publication with recordId %d failed: %v", r.Biblionumber, resp.Status)
 					continue
 				}
-				resp.Body.Close()
 
 			}
 		}
@@ -374,11 +374,11 @@ func (c collector) run() error {
 				log.Printf("HTTP request to services failed: %v", err)
 				continue
 			}
+			resp.Body.Close()
 			if resp.StatusCode != 202 {
 				log.Printf("Request to services reindexing publication with recordId %d failed: %v", id, resp.Status)
 				continue
 			}
-			resp.Body.Close()
 		}
 		log.Printf("Done processing %d records", totalCount)
 
