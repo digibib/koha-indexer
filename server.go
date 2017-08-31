@@ -36,14 +36,14 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var recJson []byte
+	var recJSON []byte
 	if err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bktBiblio).Get(u32tob(uint32(biblionr)))
 		if b == nil {
 			return errNotFound
 		}
-		recJson = make([]byte, len(b))
-		copy(recJson, b)
+		recJSON = make([]byte, len(b))
+		copy(recJSON, b)
 		return nil
 	}); err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -55,7 +55,7 @@ func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	gz := gzip.NewWriter(w)
 	defer gz.Close()
-	if _, err := gz.Write(recJson); err != nil {
+	if _, err := gz.Write(recJSON); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
