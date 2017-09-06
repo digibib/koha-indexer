@@ -552,6 +552,9 @@ GROUP BY biblionumber;`
 	sqlHomeBranches = `
   SELECT biblionumber, GROUP_CONCAT(DISTINCT homebranch)
     FROM items
+   WHERE (itemlost = 0 AND
+          damaged = 0 AND
+          notforloan !=  1)
 GROUP BY biblionumber;`
 
 	sqlBranchAvailabilty = `
