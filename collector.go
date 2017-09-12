@@ -558,16 +558,16 @@ GROUP BY biblionumber;`
 GROUP BY biblionumber;`
 
 	sqlBranchAvailabilty = `
-   SELECT I.biblionumber, GROUP_CONCAT(DISTINCT I.homebranch)
-     FROM items I
-LEFT JOIN reserves R USING(itemnumber)
-LEFT JOIN branchtransfers BT USING(itemnumber)
-    WHERE I.onloan IS NULL
-      AND I.homebranch = I.holdingbranch
-      AND I.notforloan = 0
-      AND I.itemlost = 0
-      AND R.reserve_id IS NULL
-      AND (BT.itemnumber IS NULL OR BT.datearrived IS NOT NULL)
+   SELECT i.biblionumber, GROUP_CONCAT(DISTINCT i.homebranch)
+     FROM items i
+LEFT JOIN reserves r USING(itemnumber)
+LEFT JOIN branchtransfers bt ON i.itemnumber = bt.itemnumber AND bt.datearrived IS NULL
+    WHERE i.onloan IS NULL
+      AND i.homebranch = i.holdingbranch
+      AND i.notforloan = 0
+      AND i.itemlost = 0
+      AND r.reserve_id IS NULL
+      AND bt.itemnumber IS NULL
  GROUP BY biblionumber;`
 
 	sqlCheckouts1m = `
