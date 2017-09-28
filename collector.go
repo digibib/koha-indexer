@@ -363,23 +363,24 @@ func (c collector) run() error {
 
 			}
 		}
-		for _, id := range deletedIDs {
-			// Remove any reference to biblio
-			resp, err := http.PostForm(c.services,
-				url.Values{
-					"recordId": {strconv.Itoa(int(id))},
-					"deleted":  {"true"},
-				})
-			if err != nil {
-				log.Printf("HTTP request to services failed: %v", err)
-				continue
-			}
-			resp.Body.Close()
-			if resp.StatusCode != 202 {
-				log.Printf("Request to services reindexing publication with recordId %d failed: %v", id, resp.Status)
-				continue
-			}
-		}
+		/*
+			for _, id := range deletedIDs {
+				// Remove any reference to biblio
+				resp, err := http.PostForm(c.services,
+					url.Values{
+						"recordId": {strconv.Itoa(int(id))},
+						"deleted":  {"true"},
+					})
+				if err != nil {
+					log.Printf("HTTP request to services failed: %v", err)
+					continue
+				}
+				resp.Body.Close()
+				if resp.StatusCode != 202 {
+					log.Printf("Request to services reindexing publication with recordId %d failed: %v", id, resp.Status)
+					continue
+				}
+			}*/
 		log.Printf("Done processing %d records", totalCount)
 
 		firstLoop = false
