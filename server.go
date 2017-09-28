@@ -22,14 +22,11 @@ func newServer(db *bolt.DB) server {
 
 func (s server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.Split(r.URL.Path, "/")
-	if len(path) != 3 {
+	if len(path) < 3 || path[1] != "record" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if path[1] != "record" {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
+
 	biblionr, err := strconv.Atoi(path[2])
 	if err != nil {
 		http.Error(w, "record ID must be an integer", http.StatusBadRequest)
