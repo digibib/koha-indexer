@@ -363,6 +363,9 @@ func (c collector) run() error {
 
 			}
 		}
+
+		// TODO BUG: deleted is not acutally deleted, but simply a biblio that used to have items, but not anymore.
+		// The SQL queries need to be updated to use LEFT JOIN
 		/*
 			for _, id := range deletedIDs {
 				// Remove any reference to biblio
