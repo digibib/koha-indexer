@@ -94,7 +94,7 @@ func (c collector) persistUpdated(newRecords map[uint32]record, timestamp time.T
 				// while iterating.
 				updates[newRec.Biblionumber] = true
 			} else {
-				// Record is no longer in Koha and must be deleted.
+				// Record is no longer in Koha (or has 0 items) and can be deleted.
 				if err := cur.Delete(); err != nil {
 					return err
 				}
@@ -364,26 +364,19 @@ func (c collector) run() error {
 			}
 		}
 
-		// TODO BUG: deleted is not acutally deleted, but simply a biblio that used to have items, but not anymore.
-		// The SQL queries need to be updated to use LEFT JOIN
-		/*
-			for _, id := range deletedIDs {
-				// Remove any reference to biblio
-				resp, err := http.PostForm(c.services,
-					url.Values{
-						"recordId": {strconv.Itoa(int(id))},
-						"deleted":  {"true"},
-					})
-				if err != nil {
-					log.Printf("HTTP request to services failed: %v", err)
-					continue
-				}
-				resp.Body.Close()
-				if resp.StatusCode != 202 {
-					log.Printf("Request to services reindexing publication with recordId %d failed: %v", id, resp.Status)
-					continue
-				}
-			}*/
+		for _, id := range deletedIDs {
+			// Remove any reference to biblio
+			resp, err := http.PostForm(c.fuseki,
+				url.Values{"update": {fmt.Sprintf(sparqlDeleteAvailability, strconv.Itoa(int(id)))}})
+			if err != nil {
+				log.Printf("SPARQL query failed: %v", err)
+				continue
+			}
+			if resp.StatusCode != 200 {
+				log.Printf("SPARQL query failed: %v", resp.Status)
+			}
+			resp.Body.Close()
+		}
 		log.Printf("Done processing %d records", totalCount)
 
 		firstLoop = false
@@ -542,6 +535,15 @@ const (
 	         OPTIONAL { ?pub :hasAvailableBranch ?availBranch }
 	};`
 
+	sparqlDeleteAvailability = `
+	PREFIX : <http://data.deichman.no/ontology#>
+	DELETE { ?pub :hasHomeBranch ?homeBranch ; :hasAvailableBranch ?availBranch ; :hasNumItems ?numItems }
+	WHERE  { ?pub :recordId "%s" .
+	         OPTIONAL { ?pub :hasNumItems ?numItems }
+	         OPTIONAL { ?pub :hasHomeBranch ?homeBranch }
+	         OPTIONAL { ?pub :hasAvailableBranch ?availBranch }
+	};`
+
 	sparqlDeleteAllAvialData = `
 	DELETE WHERE { ?p <http://data.deichman.no/ontology#hasNumItems> ?n };
 	DELETE WHERE { ?p <http://data.deichman.no/ontology#hasHomeBranch> ?b };
@@ -562,8 +564,8 @@ GROUP BY biblionumber;`
 GROUP BY biblionumber;`
 
 	sqlBranchAvailabilty = `
-   SELECT i.biblionumber, GROUP_CONCAT(DISTINCT i.homebranch)
-     FROM items i
+	 SELECT b.biblionumber, GROUP_CONCAT(DISTINCT i.homebranch) FROM biblioitems b
+LEFT JOIN items i USING(biblionumber)
 LEFT JOIN reserves r USING(itemnumber)
 LEFT JOIN branchtransfers bt ON i.itemnumber = bt.itemnumber AND bt.datearrived IS NULL
     WHERE i.onloan IS NULL
@@ -572,7 +574,7 @@ LEFT JOIN branchtransfers bt ON i.itemnumber = bt.itemnumber AND bt.datearrived 
       AND i.itemlost = 0
       AND r.reserve_id IS NULL
       AND bt.itemnumber IS NULL
- GROUP BY biblionumber;`
+ GROUP BY b.biblionumber;`
 
 	sqlCheckouts1m = `
   SELECT biblionumber, count(*) AS num
