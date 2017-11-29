@@ -560,7 +560,8 @@ GROUP BY biblionumber;`
     FROM items
    WHERE (itemlost = 0 AND
           damaged = 0 AND
-          notforloan !=  1)
+          notforloan !=  1 AND
+          homebranch IS NOT NULL)
 GROUP BY biblionumber;`
 
 	sqlBranchAvailabilty = `
