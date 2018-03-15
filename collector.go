@@ -574,7 +574,8 @@ LEFT JOIN branchtransfers bt ON i.itemnumber = bt.itemnumber AND bt.datearrived 
       AND i.homebranch = i.holdingbranch
       AND i.notforloan = 0
       AND i.itemlost = 0
-      AND deleted_at IS NULL
+      AND i.deleted_at IS NULL
+      AND b.deleted_at IS NULL
       AND r.reserve_id IS NULL
       AND bt.itemnumber IS NULL
  GROUP BY b.biblionumber;`
